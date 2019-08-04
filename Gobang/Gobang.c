@@ -1,263 +1,234 @@
-#include <ctype.h>
-#include <stdio.h>
+#include "Gobang.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <Windows.h>
-/*Chess*/
-typedef struct GobangChess_t {
-	char ch;
-	unsigned short color;//WORD
-}GobangChess;//CHAR_INFO
 
-void GobangChessSet(GobangChess *chess,char ch,unsigned short color) {
-	chess->ch = ch;	chess->color = color;
-}
-
-void GobangChessCopy(GobangChess *chess,const GobangChess *source) {
-	chess->ch = source->ch; chess->color = source->color;
-}
-
-int GobangChessIsEqual(const GobangChess *ca, const GobangChess *cb) {
-	if (ca->ch == cb->ch	&&	ca->color == cb->color)
-		return 1;
-	else
-		return 0;
-}
-/*Chessboard*/
-#define GOBANG_CHESSBOARD_DEFAULT_WIDTH 15
-#define GOBANG_CHESSBOARD_DEFAULT_HEIGHT 15
-typedef struct GobangChessboard_t {
-	int width;
-	int height;
-	GobangChess **position;
-}GobangChessboard;
-
-void GobangChessboardCreate(GobangChessboard *chessboard,int width,int height) {
-	chessboard->position = (GobangChess**)malloc(height * sizeof(GobangChess*));
+void GobangChessboard_Create(GobangChessboard *board, int width, int height) {
+	board->width = width; board->height = height;
+	board->location = (GOBANG_CHESS**)malloc(board->height * sizeof(GOBANG_CHESS*));
 	int i;
-	for (i = 0; i < height;++i) {
-		chessboard->position[i] = (GobangChess*)malloc(width * sizeof(GobangChess));
+	for (i = 0; i < board->height; ++i) {
+		board->location[i] = (GOBANG_CHESS*)malloc(board->width * sizeof(GOBANG_CHESS*));
 	}
-	chessboard->width = width; chessboard->height = height;
 }
 
-void GobangChessboardDestroy(GobangChessboard *chessboard) {
+void GobangChessboard_Destroy(GobangChessboard *board) {
 	int i;
-	for (i = 0; i < chessboard->height;++i) {
-		free(chessboard->position[i]); chessboard->position[i] = NULL;
+	for (i = 0; i < board->height; ++i) {
+		free(board->location[i]); board->location[i] = NULL;
 	}
-	free(chessboard->position); chessboard->position = NULL;
+	free(board->location); board->location = NULL;
+	board->width = 0; board->height = 0;
 }
 
-void GobangPutChessOnBoard(GobangChessboard *chessboard, const GobangChess *chess, int x, int y) {
-	GobangChessCopy(&chessboard->position[x][y], chess);
-}
-
-void GobangChessboardClear(GobangChessboard *chessboard, const GobangChess *chess) {
+void GobangChessboard_SetEmpty(GobangChessboard *board) {
 	int i, j;
-	for (i = 0; i < chessboard->height; ++i) {
-		for (j = 0; j < chessboard->width; ++j) {
-			GobangChessCopy(&chessboard->position[i][j], chess);
+	for (i = 0; i < board->height;++i) {
+		for (j = 0; j < board->width;++j) {
+			board->location[i][j] = GOBANG_CHESS_BLANK;
 		}
 	}
 }
-/*Game*/
-#define GOBANG_GAME_RUN 1
-#define GOBANG_GAME_EXIT 0
-#define GOBANG_INPUT_ERROR_OVERRANGE 1
-#define GOBANG_INPUT_ERROR_HASEXIST 2
-#define GOBANG_INPUT_OK 0
-typedef struct GobangGame_t {
-	int isGameRun;
-	int round;
-	GobangChess blankChess;//空白位置样式
-	GobangChess preChess;//先手方棋子样式
-	GobangChess postChess;//后手方棋子样式
-	int inputX, inputY;
-	GobangChessboard board;
-}GobangGame;
 
-void GobangGameSetState(GobangGame *game,int state) {
-	game->isGameRun = state;
+void GobangGame_Launch(GobangGame *game) {
+	GobangGame_Start(game);
+	GobangGame_Mainloop(game);
+	GobangGame_End(game);
 }
 
-int GobangGameState(GobangGame *game) {
-	return game->isGameRun;
+void GobangGame_Start(GobangGame *game) {
+	GobangChessboard_Create(&game->chessboard, GOBANG_CHESSBOARD_WIDTH, GOBANG_CHESSBOARD_HEIGHT);
+	GobangChessboard_SetEmpty(&game->chessboard);
+	game->round = 1;
+	GobangGame_SetBrushColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+	printf("欢迎来玩五子棋\n");
+	GobangGame_RenderChessboard(game);
+	game->isGameRun = GOBANG_TRUE;
 }
 
-void GobangGameRoundSet(GobangGame *game, int x) {
-	game->round = x;
+void GobangGame_Mainloop(GobangGame *game) {
+	while (game->isGameRun) {
+		GobangGame_Input(game);
+		GobangGame_Update(game);
+	}
 }
 
-void GobangGameEnterNextRound(GobangGame *game) {
-	game->round++;
+void GobangGame_End(GobangGame *game) {
+	GobangChessboard_SetEmpty(&game->chessboard);
 }
 
-void GobangGameSetChessboardBlankStyle(GobangGame *game,char ch,unsigned short color) {
-	GobangChessSet(&game->blankChess, ch, color);
+void GobangGame_Input(GobangGame *game) {
+	int turn = game->round % 2;
+	if (turn == 0) { turn = 2; }
+	if (turn==1) {
+		GobangGame_SetBrushColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+	}
+	else {
+		GobangGame_SetBrushColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+	}
+	printf("第%d轮,玩家%d回合:\t", game->round, turn);
+	scanf("%d,%d",&game->inputX,&game->inputY);
 }
 
-void GobangGameSetPreChessStyle(GobangGame *game,char ch,unsigned short color) {
-	GobangChessSet(&game->preChess, ch, color);
+void GobangGame_Update(GobangGame *game) {
+	GobangGame_PutChessOnBoard(game);
+	if (GobangGame_IsSomeoneWon(game)) {
+		int turn = game->round % 2;
+		if (turn == 0) { turn = 2; }
+		GobangGame_SetBrushColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+		printf("第%d轮,玩家%d获得胜利!\n", game->round, turn);
+		GobangGame_RenderChessboard(game);
+		game->isGameRun = FALSE;
+	}
+	else {
+		GobangGame_RenderChessboard(game);
+		game->round++;
+	}
 }
 
-void GobangGameSetPostChessStyle(GobangGame *game, char ch, unsigned short color) {
-	GobangChessSet(&game->postChess, ch, color);
+void GobangGame_PutChessOnBoard(GobangGame *game) {
+	int turn = game->round % 2;
+	if (turn == 0) { turn = 2; }
+	if (turn == 1) {
+		game->chessboard.location[game->inputX - 1][game->inputY - 1] = GOBANG_CHESS_BLACK;
+	}
+	else {
+		game->chessboard.location[game->inputX - 1][game->inputY - 1] = GOBANG_CHESS_WHITE;
+	}
 }
 
-void GobangGameCreateChessboard(GobangGame *game,int width,int height) {
-	GobangChessboardCreate(&game->board, width, height);
-}
-void GobangGameDestroyChessboard(GobangGame *game) {
-	GobangChessboardDestroy(&game->board);
-}
-void GobangGameClearChessboard(GobangGame *game) {
-	GobangChessboardClear(&game->board, &game->blankChess);
-}
-
-void GobangGameSetTextColor(GobangGame *game, unsigned short color) {
-	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
+void GobangGame_SetBrushColor(unsigned short color) {
+	HANDLE handle;
+	handle = GetStdHandle(STD_OUTPUT_HANDLE);
 	SetConsoleTextAttribute(handle, color);
 }
-
-void GobangGameDrawChess(GobangGame *game,const GobangChess *chess) {
-	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
-	SetConsoleTextAttribute(handle, chess->color);
-	printf("%c",chess->ch);
+void GobangGame_RenderChess(GOBANG_CHESS type) {
+	if (type == GOBANG_CHESS_BLACK) {
+		GobangGame_SetBrushColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+	}
+	else if (type == GOBANG_CHESS_WHITE) {
+		GobangGame_SetBrushColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+	}
+	else {
+		GobangGame_SetBrushColor(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
+	}
+	printf("#");
 }
 
-void GobangGameDrawChessboard(GobangGame *game,int width,int height) {
+void GobangGame_RenderChessboard(GobangGame *game) {
+	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
 	int i, j;
-	for (i = 0; i < game->board.height;++i) {
-		for (j = 0; j < game->board.width;++j) {
-			GobangGameDrawChess(&game, &game->board.position[i][j]);
+	for (i = 0; i < game->chessboard.height;++i) {
+		for (j = 0; j < game->chessboard.width;++j) {
+			GobangGame_RenderChess(game->chessboard.location[i][j]);
 		}
 		printf("\n");
 	}
 }
 
-void GobangGamePutInputChessOnBoard(GobangGame *game) {
-	if (game->round % 2 == 1) {
-		GobangChessCopy(&game->board.position[game->inputX - 1][game->inputY - 1], &game->preChess);
+GOBANG_BOOL GobangGame_IsSomeoneWon(GobangGame *game) {
+	if (GobangGame_IsHorizontalLink(game)) {
+		return GOBANG_TRUE;
 	}
-	else {
-		GobangChessCopy(&game->board.position[game->inputX - 1][game->inputY - 1], &game->postChess);
+	if (GobangGame_IsVerticalLink(game)) {
+		return GOBANG_TRUE;
 	}
-}
-//Some colored prompt text output
-void GobangGamePromptGameStart(GobangGame *game) {
-	GobangGameSetTextColor(game, FOREGROUND_GREEN);
-	printf("Welcome to play the Gobang game!\n");
-}
-void GobangGamePromptRoundStart(GobangGame *game) {
-	GobangGameSetTextColor(game, FOREGROUND_GREEN);
-	printf("Round-%d======================\n", game->round);
-	printf("Chessboard State:\n");
-}
-void GobangGamePromptPlayerInput(GobangGame *game) {
-	GobangGameSetTextColor(game, FOREGROUND_GREEN);
-	printf("PLAYER %d input :\t", (game->round % 2) + 1);
-}
-void GobangGamePromptPlayerInputOverRange(GobangGame *game) {
-	GobangGameSetTextColor(game, FOREGROUND_RED);
-	printf("Invalid input.Makesure your input in the chessboard range.\n");
-}
-void GobangGamePromptPlayerInputNotBlankPosition(GobangGame *game) {
-	GobangGameSetTextColor(game, FOREGROUND_RED);
-	printf("Invalid input.This position has allready a chess existed.\n");
-}
-void GobangGamePromptWin(GobangGame *game) {
-	printf("You win!\n");
+	if (GobangGame_IsMainDiagonalLink(game)) {
+		return GOBANG_TRUE;
+	}
+	if (GobangGame_IsSubDiagonalLink(game)) {
+		return GOBANG_TRUE;
+	}
+	return GOBANG_FALSE;
 }
 
-void GobangGameStart(GobangGame *game) {
-	GobangGameSetChessboardBlankStyle(game, '#', FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-	GobangGameSetPreChessStyle(game, '#', FOREGROUND_RED);
-	GobangGameSetPostChessStyle(game, '#', FOREGROUND_GREEN);
-	GobangGameCreateChessboard(game, GOBANG_CHESSBOARD_DEFAULT_WIDTH, GOBANG_CHESSBOARD_DEFAULT_HEIGHT);
-	GobangGameClearChessboard(game);
-	GobangGameSetState(game, GOBANG_GAME_RUN);
-	GobangGamePromptGameStart(game);
-	GobangGameRoundSet(game, 1);
-}
-
-int GobangGamePlayerInputWithJudge(GobangGame *game) {
-	GobangGamePromptPlayerInput(game);
-	scanf("%d,%d", &game->inputX,&game->inputY);
-
-	if (game->inputX < 1 || game->inputX >= game->board.width
-		|| game->inputY < 1 || game->inputY >= game->board.height) {
-		return GOBANG_INPUT_ERROR_OVERRANGE;
-	}
-	else {
-		if (GobangChessIsEqual(&game->board.position[game->inputX - 1][game->inputY - 1], &game->blankChess)) {
-			return	GOBANG_INPUT_OK;
-		}
-		else {
-			return GOBANG_INPUT_ERROR_HASEXIST;
+GOBANG_BOOL GobangGame_IsHorizontalLink(GobangGame *game) {
+	int startY, endY, X;//实际是行列,X对应的是行,故不变,Y对应的是列,故变
+	startY = (game->inputY - 1) - 5;
+	if (startY < 0) { startY = 0; }
+	endY = (game->inputY - 1) + 5;
+	if (endY > GOBANG_CHESSBOARD_WIDTH - 1) { endY = GOBANG_CHESSBOARD_WIDTH - 1; }
+	X = game->inputX - 1;
+	int scantimes = endY - startY - 5 + 1;
+	int i;
+	for (i = 0; i < scantimes; ++i) {
+		if (game->chessboard.location[X][startY + i] != GOBANG_CHESS_BLANK
+			&& game->chessboard.location[X][startY + i] == game->chessboard.location[X][startY + i + 1]
+			&& game->chessboard.location[X][startY + i] == game->chessboard.location[X][startY + i + 2]
+			&& game->chessboard.location[X][startY + i] == game->chessboard.location[X][startY + i + 3]
+			&& game->chessboard.location[X][startY + i] == game->chessboard.location[X][startY + i + 4]) {
+			return GOBANG_TRUE;
 		}
 	}
+	return GOBANG_FALSE;
 }
-
-void GobangGamePlayerInputUntilCorrect(GobangGame *game) {
-	int curInputState = GobangGamePlayerInputWithJudge(game);
-	while (curInputState != GOBANG_INPUT_OK) {
-		if (curInputState==GOBANG_INPUT_ERROR_OVERRANGE) {
-			GobangGamePromptPlayerInputOverRange(game);
+GOBANG_BOOL GobangGame_IsVerticalLink(GobangGame *game) {
+	int startX, endX, Y;//实际是行列,X对应的是行,故变,Y对应的是列,故不变
+	startX = (game->inputX - 1) - 5;
+	if (startX < 0) { startX = 0; }
+	endX = (game->inputX - 1) + 5;
+	if (endX > GOBANG_CHESSBOARD_HEIGHT - 1) { endX = GOBANG_CHESSBOARD_HEIGHT - 1; }
+	Y = game->inputY - 1;
+	int scantimes = endX - startX - 5 + 1;
+	int i;
+	for (i = 0; i < scantimes; ++i) {
+		if (game->chessboard.location[startX + i][Y] != GOBANG_CHESS_BLANK
+			&& game->chessboard.location[startX + i][Y] == game->chessboard.location[startX + i + 1][Y]
+			&& game->chessboard.location[startX + i][Y] == game->chessboard.location[startX + i + 2][Y]
+			&& game->chessboard.location[startX + i][Y] == game->chessboard.location[startX + i + 3][Y]
+			&& game->chessboard.location[startX + i][Y] == game->chessboard.location[startX + i + 4][Y]) {
+			return GOBANG_TRUE;
 		}
-		if (curInputState==GOBANG_INPUT_ERROR_HASEXIST) {
-			GobangGamePromptPlayerInputNotBlankPosition(game);
+	}
+	return GOBANG_FALSE;
+}
+GOBANG_BOOL GobangGame_IsMainDiagonalLink(GobangGame *game) {
+	//列数增加,行数增加
+	int startX, startY;
+	int endX, endY;
+	startX = (game->inputX - 1) - 5;
+	if (startX < 0) { startX = 0; }
+	startY = (game->inputY - 1) - 5;
+	if (startY < 0) { startY = 0; }
+	endX = (game->inputX - 1) + 5;
+	if (endX > GOBANG_CHESSBOARD_HEIGHT - 1) { endX = GOBANG_CHESSBOARD_HEIGHT - 1; }
+	endY = (game->inputY - 1) + 5;
+	if (endY > GOBANG_CHESSBOARD_WIDTH - 1) { endY = GOBANG_CHESSBOARD_WIDTH - 1; }
+	int scantimes = endX - startX - 5 + 1;
+	int i;
+	for (i = 0; i < scantimes; ++i) {
+		if (game->chessboard.location[startX + i][startY + i] != GOBANG_CHESS_BLANK
+			&& game->chessboard.location[startX + i][startY + i] == game->chessboard.location[startX + i + 1][startY + i + 1]
+			&& game->chessboard.location[startX + i][startY + i] == game->chessboard.location[startX + i + 2][startY + i + 2]
+			&& game->chessboard.location[startX + i][startY + i] == game->chessboard.location[startX + i + 3][startY + i + 3]
+			&& game->chessboard.location[startX + i][startY + i] == game->chessboard.location[startX + i + 4][startY + i + 4]) {
+			return GOBANG_TRUE;
 		}
-		curInputState = GobangGamePlayerInputWithJudge(game);
 	}
+	return GOBANG_FALSE;
 }
-
-void GobangGameInput(GobangGame *game) {
-	GobangGamePlayerInputUntilCorrect(game);
-}
-int GobangGameIsHorizontalLink(GobangGame *game,int ax,int ay,int bx,int by) {
-
-}
-int GobangGameIsVerticalLink(GobangGame *game,int ax,int ay,int bx,int by) {
-
-}
-int GobangGameIsMainDiagonalLink(GobangGame *game,int ax,int ay,int bx,int by) {
-
-}
-int GobangGameIsSubDiagonalLink(GobangGame *game, int ax, int ay, int bx, int by) {
-
-}
-int GobangGameIsWinJudge(GobangGame *game) {
-	//从当前位置,判断以它为中心的,半径为5的矩形内部即可,不必判断整个棋盘
-	
-}
-
-void GobangGameUpdate(GobangGame *game) {
-	GobangGamePutInputChessOnBoard(game);
-	GobangGameDrawChessboard(game, GOBANG_CHESSBOARD_DEFAULT_WIDTH, GOBANG_CHESSBOARD_DEFAULT_HEIGHT);
-	if (GobangGameIsWinJudge(game)==1) {//有人获胜
-		GobangGamePromptWin(game);
-		GobangGameSetState(&game, GOBANG_GAME_EXIT);
+GOBANG_BOOL GobangGame_IsSubDiagonalLink(GobangGame *game) {
+	//列数增加,行数减少
+	int startX, startY;
+	int endX, endY;
+	startX = (game->inputX - 1) - 5;
+	if (startX < 0) { startX = 0; }
+	startY = (game->inputY - 1) - 5;
+	if (startY < 0) { startY = 0; }
+	endX = (game->inputX - 1) + 5;
+	if (endX > GOBANG_CHESSBOARD_HEIGHT - 1) { endX = GOBANG_CHESSBOARD_HEIGHT - 1; }
+	endY = (game->inputY - 1) + 5;
+	if (endY > GOBANG_CHESSBOARD_WIDTH - 1) { endY = GOBANG_CHESSBOARD_WIDTH - 1; }
+	int scantimes = endY - startY - 5 + 1;
+	int i;
+	for (i = 0; i < scantimes; ++i) {
+		if (game->chessboard.location[endX - i][startY + i] != GOBANG_CHESS_BLANK
+			&& game->chessboard.location[endX - i][startY + i] == game->chessboard.location[endX - i - 1][startY + i + 1]
+			&& game->chessboard.location[endX - i][startY + i] == game->chessboard.location[endX - i - 2][startY + i + 2]
+			&& game->chessboard.location[endX - i][startY + i] == game->chessboard.location[endX - i - 3][startY + i + 3]
+			&& game->chessboard.location[endX - i][startY + i] == game->chessboard.location[endX - i - 4][startY + i + 4]) {
+			return GOBANG_TRUE;
+		}
 	}
-	else {
-		GobangGameEnterNextRound(game);
-	}
-}
-
-void GobangGameMainloop(GobangGame *game) {
-	while (GobangGameState(game) == GOBANG_GAME_RUN) {
-		GobangGameInput(game);
-		GobangGameUpdate(game);
-	}
-}
-
-void GobangGameLaunch(GobangGame *game) {
-	GobangGameStart(game);
-	GobangGameMainloop(game);
-}
-
-int main() {
-	GobangGame game;
-	GobangGameLaunch(&game);
-
-	return 0;
+	return GOBANG_FALSE;
 }
